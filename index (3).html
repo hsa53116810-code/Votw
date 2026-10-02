@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="취향·메뉴 한 표 - 좋아하는 메뉴에 투표하고 실시간으로 결과를 확인하세요.">
+<title>취향·메뉴 한 표</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR","Malgun Gothic",sans-serif;background:#f4f7fb;color:#202938;line-height:1.6}
+button,input{font:inherit}
+.container{width:min(100% - 32px,760px);margin:0 auto;padding:28px 0 48px}
+header{text-align:center;margin-bottom:24px}
+.badge{display:inline-block;padding:5px 10px;border-radius:999px;background:#e8f1ff;color:#245bb5;font-size:.85rem;font-weight:700;margin-bottom:8px}
+h1{margin:0;font-size:clamp(1.8rem,7vw,2.5rem);letter-spacing:-.04em}
+.subtitle{margin:8px 0 0;color:#687386;font-size:.95rem}
+.status{display:flex;align-items:center;gap:8px;padding:11px 14px;margin-bottom:18px;border:1px solid #dfe5ee;border-radius:12px;background:#fff;font-size:.9rem}
+.status-dot{width:9px;height:9px;flex:0 0 auto;border-radius:50%;background:#f0a500}
+.status.connected .status-dot{background:#22a06b}
+.status.error .status-dot{background:#d64545}
+.card{background:#fff;border:1px solid #e1e6ee;border-radius:18px;padding:22px;margin-bottom:18px;box-shadow:0 5px 20px rgba(31,47,70,.05)}
+.card h2{margin:0 0 6px;font-size:1.25rem;letter-spacing:-.03em}
+.help{margin:0 0 18px;color:#687386;font-size:.9rem}
+.menu-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.menu-option{position:relative}
+.menu-option input{position:absolute;opacity:0;pointer-events:none}
+.menu-option label{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:130px;padding:14px 10px;border:2px solid #dfe5ee;border-radius:14px;background:#fff;cursor:pointer;text-align:center;transition:.15s ease}
+.menu-option label:hover{border-color:#8bb2ef;background:#f8fbff}
+.menu-option input:checked+label{border-color:#3675d6;background:#eef5ff;box-shadow:0 0 0 3px rgba(54,117,214,.12)}
+.menu-option input:focus-visible+label{outline:3px solid #91bdf5;outline-offset:2px}
+.emoji{font-size:2.2rem;margin-bottom:6px}
+.menu-name{font-weight:800}
+.vote-button{width:100%;margin-top:16px;padding:13px 18px;border:0;border-radius:12px;background:#3675d6;color:#fff;font-weight:800;cursor:pointer;transition:.15s ease}
+.vote-button:hover:not(:disabled){background:#285fb8}
+.vote-button:focus-visible{outline:3px solid #91bdf5;outline-offset:2px}
+.vote-button:disabled{cursor:not-allowed;opacity:.55}
+.message{min-height:24px;margin:12px 0 0;font-size:.9rem;color:#586579}
+.message.success{color:#16734b}
+.message.error{color:#c03939}
+.results{display:grid;gap:12px}
+.result-row{padding:14px;border:1px solid #e3e7ed;border-radius:13px;background:#fafbfd}
+.result-top{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px;font-weight:800}
+.count{white-space:nowrap}
+.bar{height:9px;overflow:hidden;border-radius:999px;background:#e5e9ef}
+.bar-fill{height:100%;width:0;border-radius:inherit;background:#3675d6;transition:width .3s ease}
+.total{margin:14px 0 0;color:#687386;font-size:.88rem;text-align:right}
+.vote-list{list-style:none;padding:0;margin:0;display:grid;gap:9px}
+.vote-item{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 13px;border-radius:10px;background:#f7f9fc;border:1px solid #e6eaf0}
+.vote-content{font-weight:700}
+.vote-meta{flex:0 0 auto;color:#7a8595;font-size:.78rem;text-align:right}
+.empty{padding:22px 10px;color:#7a8595;text-align:center}
+.notice{margin-top:18px;padding:14px;border-radius:12px;background:#fff8e8;border:1px solid #f0dfb5;color:#6f531d;font-size:.82rem}
+footer{color:#8a94a3;text-align:center;font-size:.78rem;margin-top:24px}
+@media (max-width:560px){
+.container{width:min(100% - 20px,760px);padding-top:20px}
+.card{padding:17px;border-radius:15px}
+.menu-grid{grid-template-columns:1fr}
+.menu-option label{min-height:78px;flex-direction:row;justify-content:flex-start;gap:12px;padding:10px 15px;text-align:left}
+.emoji{margin:0;font-size:1.8rem}
+.vote-item{align-items:flex-start;flex-direction:column;gap:3px}
+.vote-meta{text-align:left}
+}
+</style>
+</head>
+<body>
+<main class="container">
+  <header>
+    <div class="badge">실시간 메뉴 투표</div>
+    <h1>취향·메뉴 한 표</h1>
+    <p class="subtitle">지금 먹고 싶은 메뉴 하나를 골라 한 표를 남겨 보세요.</p>
+  </header>
+
+  <div id="connectionStatus" class="status" role="status" aria-live="polite">
+    <span class="status-dot" aria-hidden="true"></span>
+    <span id="connectionText">Firebase 연결을 확인하는 중입니다.</span>
+  </div>
+
+  <section class="card" aria-labelledby="voteTitle">
+    <h2 id="voteTitle">오늘의 메뉴에 투표하기</h2>
+    <p class="help">개인정보를 입력하지 않고 익명으로 한 표를 저장합니다.</p>
+    <form id="voteForm">
+      <div class="menu-grid">
+        <div class="menu-option">
+          <input type="radio" id="menuChicken" name="menu" value="치킨" required>
+          <label for="menuChicken"><span class="emoji" aria-hidden="true">🍗</span><span class="menu-name">치킨</span></label>
+        </div>
+        <div class="menu-option">
+          <input type="radio" id="menuPizza" name="menu" value="피자">
+          <label for="menuPizza"><span class="emoji" aria-hidden="true">🍕</span><span class="menu-name">피자</span></label>
+        </div>
+        <div class="menu-option">
+          <input type="radio" id="menuPasta" name="menu" value="파스타">
+          <label for="menuPasta"><span class="emoji" aria-hidden="true">🍝</span><span class="menu-name">파스타</span></label>
+        </div>
+      </div>
+      <button id="voteButton" class="vote-button" type="submit" disabled>투표 저장하기</button>
+      <p id="formMessage" class="message" role="status" aria-live="polite"></p>
+    </form>
+  </section>
+
+  <section class="card" aria-labelledby="resultTitle">
+    <h2 id="resultTitle">실시간 투표 결과</h2>
+    <p class="help">Firebase에 저장된 전체 투표를 다시 읽어 집계합니다.</p>
+    <div id="results" class="results"><div class="empty">데이터를 불러오는 중입니다.</div></div>
+    <p id="totalVotes" class="total">총 0표</p>
+  </section>
+
+  <section class="card" aria-labelledby="recentTitle">
+    <h2 id="recentTitle">최근 투표 목록</h2>
+    <p class="help">가장 최근에 저장된 투표부터 표시합니다.</p>
+    <ul id="voteList" class="vote-list"><li class="empty">기록을 불러오는 중입니다.</li></ul>
+  </section>
+
+  <div class="notice">
+    <strong>실습 안내</strong><br>
+    이 페이지는 Firebase 익명 인증을 사용합니다. 실명, 이메일, 학교 계정 등의 개인정보를 입력받지 않습니다.
+    Firebase Console에서 Realtime Database 보안 규칙을 확인한 뒤 사용하세요.
+  </div>
+
+  <footer>취향·메뉴 한 표 · Firebase Realtime Database 실습</footer>
+</main>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+
+<script>
+"use strict";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB9rjKrPypQ6cg45aT7_J8--CgXmO41_hw",
+  authDomain: "vivekoding-cfe9d.firebaseapp.com",
+  databaseURL: "https://vivekoding-cfe9d-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "vivekoding-cfe9d",
+  storageBucket: "vivekoding-cfe9d.firebasestorage.app",
+  messagingSenderId: "498707530097",
+  appId: "1:498707530097:web:50d2be9b2d09bfdce336d0"
+};
+
+let database = null;
+let currentUser = null;
+let entriesListenerAttached = false;
+
+const connectionStatus = document.getElementById("connectionStatus");
+const connectionText = document.getElementById("connectionText");
+const voteForm = document.getElementById("voteForm");
+const voteButton = document.getElementById("voteButton");
+const formMessage = document.getElementById("formMessage");
+const results = document.getElementById("results");
+const totalVotes = document.getElementById("totalVotes");
+const voteList = document.getElementById("voteList");
+
+const MENU_NAMES = ["치킨", "피자", "파스타"];
+const ALIAS_ADJECTIVES = ["귀여운","신나는","졸린","배고픈","행복한","용감한","재빠른","상큼한","조용한","즐거운"];
+const ALIAS_ANIMALS = ["토끼","고양이","강아지","여우","곰","판다","수달","햄스터","다람쥐","펭귄"];
+
+function pick(list) {
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+function getAnonymousAlias() {
+  const key = "menuVoteAnonymousAlias";
+  let alias = null;
+  try { alias = localStorage.getItem(key); } catch (e) {}
+  if (!alias) {
+    alias = pick(ALIAS_ADJECTIVES) + " " + pick(ALIAS_ANIMALS) + " " + Math.floor(Math.random() * 1000);
+    try { localStorage.setItem(key, alias); } catch (e) {}
+  }
+  return alias.slice(0, 30);
+}
+
+function setConnectionStatus(type, message) {
+  connectionStatus.classList.remove("connected", "error");
+  if (type === "connected") connectionStatus.classList.add("connected");
+  else if (type === "error") connectionStatus.classList.add("error");
+  connectionText.textContent = message;
+}
+
+function watchConnection() {
+  database.ref(".info/connected").on("value", function (snap) {
+    if (snap.val() === true) {
+      setConnectionStatus("connected", "Firebase에 연결되었습니다.");
+    } else {
+      setConnectionStatus("normal", "Firebase 연결이 끊겼습니다. 다시 연결을 시도하는 중입니다.");
+    }
+  }, function (error) {
+    setConnectionStatus("error", "연결 상태를 확인하지 못했습니다: " + error.message);
+  });
+}
+
+function formatDate(ts) {
+  if (!ts) return "시간 정보 없음";
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return "시간 정보 없음";
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"
+  }).format(d);
+}
+
+function renderResults(entries) {
+  const counts = { "치킨": 0, "피자": 0, "파스타": 0 };
+  entries.forEach(function (e) {
+    if (Object.prototype.hasOwnProperty.call(counts, e.content)) counts[e.content] += 1;
+  });
+  const total = entries.length;
+  results.textContent = "";
+
+  MENU_NAMES.forEach(function (menu) {
+    const count = counts[menu];
+    const pct = total > 0 ? (count / total) * 100 : 0;
+
+    const row = document.createElement("div");
+    row.className = "result-row";
+
+    const top = document.createElement("div");
+    top.className = "result-top";
+    const name = document.createElement("span");
+    name.textContent = menu;
+    const countText = document.createElement("span");
+    countText.className = "count";
+    countText.textContent = count + "표 (" + pct.toFixed(1) + "%)";
+    top.appendChild(name);
+    top.appendChild(countText);
+
+    const bar = document.createElement("div");
+    bar.className = "bar";
+    bar.setAttribute("aria-label", menu + " 득표율");
+    const fill = document.createElement("div");
+    fill.className = "bar-fill";
+    fill.style.width = pct + "%";
+    bar.appendChild(fill);
+
+    row.appendChild(top);
+    row.appendChild(bar);
+    results.appendChild(row);
+  });
+
+  totalVotes.textContent = "총 " + total + "표";
+}
+
+function renderRecentVotes(entries) {
+  voteList.textContent = "";
+  if (entries.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "empty";
+    empty.textContent = "아직 투표 기록이 없습니다.";
+    voteList.appendChild(empty);
+    return;
+  }
+
+  entries.slice()
+    .sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); })
+    .slice(0, 20)
+    .forEach(function (entry) {
+      const item = document.createElement("li");
+      item.className = "vote-item";
+
+      const content = document.createElement("span");
+      content.className = "vote-content";
+      content.textContent = entry.content;
+
+      const meta = document.createElement("span");
+      meta.className = "vote-meta";
+      meta.textContent = (entry.alias || "익명") + " · " + formatDate(entry.createdAt);
+
+      item.appendChild(content);
+      item.appendChild(meta);
+      voteList.appendChild(item);
+    });
+}
+
+function renderEntries(snapshot) {
+  const data = snapshot.val();
+  const entries = [];
+
+  if (data && typeof data === "object") {
+    Object.keys(data).forEach(function (uid) {
+      const userEntries = data[uid];
+      if (!userEntries || typeof userEntries !== "object") return;
+
+      Object.keys(userEntries).forEach(function (id) {
+        const entry = userEntries[id];
+        if (!entry || typeof entry !== "object") return;
+
+        const content = typeof entry.content === "string" ? entry.content.slice(0, 160) : "";
+        const alias = typeof entry.alias === "string" ? entry.alias.slice(0, 30) : "익명";
+        if (!content) return;
+
+        entries.push({
+          alias: alias,
+          content: content,
+          createdAt: typeof entry.createdAt === "number" ? entry.createdAt : 0
+        });
+      });
+    });
+  }
+
+  renderResults(entries);
+  renderRecentVotes(entries);
+}
+
+function attachEntriesListener() {
+  if (entriesListenerAttached) return;
+
+  database.ref("entries").on("value", function (snapshot) {
+    renderEntries(snapshot);
+  }, function (error) {
+    results.textContent = "";
+    const errorResult = document.createElement("div");
+    errorResult.className = "empty";
+    errorResult.textContent = "투표 결과를 읽지 못했습니다: " + error.message;
+    results.appendChild(errorResult);
+
+    totalVotes.textContent = "데이터를 읽을 수 없습니다.";
+
+    voteList.textContent = "";
+    const errorList = document.createElement("li");
+    errorList.className = "empty";
+    errorList.textContent = "투표 목록을 읽지 못했습니다.";
+    voteList.appendChild(errorList);
+
+    setConnectionStatus("error", "데이터 읽기 오류가 발생했습니다.");
+  });
+
+  entriesListenerAttached = true;
+}
+
+function startFirebase() {
+  try {
+    firebase.initializeApp(firebaseConfig);
+    database = firebase.database();
+    watchConnection();
+
+    firebase.auth().signInAnonymously()
+      .then(function (cred) {
+        currentUser = cred.user;
+        if (!currentUser) throw new Error("익명 사용자 정보를 확인할 수 없습니다.");
+
+        voteButton.disabled = false;
+        formMessage.textContent = "익명 사용자로 연결되었습니다. 원하는 메뉴를 선택해 주세요.";
+        formMessage.className = "message success";
+
+        attachEntriesListener();
+      })
+      .catch(function (error) {
+        console.error("익명 로그인 오류:", error);
+        setConnectionStatus("error", "익명 로그인에 실패했습니다.");
+        formMessage.textContent = "로그인할 수 없습니다. Firebase Authentication에서 익명 로그인이 활성화되어 있는지 확인하세요.";
+        formMessage.className = "message error";
+      });
+  } catch (error) {
+    console.error("Firebase 초기화 오류:", error);
+    setConnectionStatus("error", "Firebase 초기화에 실패했습니다.");
+    formMessage.textContent = "Firebase 설정을 확인해 주세요.";
+    formMessage.className = "message error";
+  }
+}
+
+voteForm.addEventListener("submit", function (event) {
+  event.preventDefault();
+
+  if (!currentUser || !database) {
+    formMessage.textContent = "Firebase에 연결된 후 투표할 수 있습니다.";
+    formMessage.className = "message error";
+    return;
+  }
+
+  const selected = document.querySelector('input[name="menu"]:checked');
+  if (!selected) {
+    formMessage.textContent = "메뉴 하나를 선택해 주세요.";
+    formMessage.className = "message error";
+    return;
+  }
+
+  const content = String(selected.value).slice(0, 160);
+  const newEntryRef = database.ref("entries/" + currentUser.uid).push();
+
+  voteButton.disabled = true;
+
+  newEntryRef.set({
+    alias: getAnonymousAlias(),
+    content: content,
+    createdAt: firebase.database.ServerValue.TIMESTAMP
+  })
+    .then(function () {
+      formMessage.textContent = content + "에 한 표가 저장되었습니다. 실시간 결과에 반영됩니다.";
+      formMessage.className = "message success";
+      voteForm.reset();
+    })
+    .catch(function (error) {
+      console.error("투표 저장 오류:", error);
+      formMessage.textContent = "투표를 저장하지 못했습니다: " + error.message;
+      formMessage.className = "message error";
+    })
+    .finally(function () {
+      voteButton.disabled = false;
+    });
+});
+
+startFirebase();
+</script>
+</body>
+</html>
